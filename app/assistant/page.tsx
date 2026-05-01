@@ -325,39 +325,42 @@ export default function AssistantPage() {
       let modelToUse = assistantType === 'gmn' ? 'gemini-3-flash-preview' : 'gemini-3.1-pro-preview';
       
       if (assistantType === 'gmn') {
-        systemPromptText = `Você é um assistente estratégico profissional e resumido, expert em SEO Local e Google Meu Negócio (GMN).
-Sua linguagem deve ser técnica porém fácil de entender, focada em prospecção e fechamento de clientes.
-Seja CONCISO. Vá direto ao ponto. Use tópicos quando possível.
+        systemPromptText = `Você é o estrategista chefe e "fechador de negócios" expert em SEO Local e GMN.
+Sua missão única é AJUDAR O USUÁRIO A FECHAR CONTRATOS com empresas locais.
+
+DIRETRIZES DE OURO:
+1. FOCO TOTAL EM FECHAMENTO: Toda resposta deve incluir um argumento de venda forte ou um próximo passo prático para converter o prospect.
+2. DADOS DOS ARQUIVOS SÃO LEI: Use EXCLUSIVAMENTE os dados dos arquivos abaixo para embasar seus argumentos. Se houver templates de mensagens nos arquivos, priorize-os.
+3. CONCISÃO ABSOLUTA: Se o usuário puder ler em 30 segundos, não escreva por 1 minuto.
+4. LINGUAGEM DE IMPACTO: Use termos como "perda de tráfego", "domínio de mercado", "janela de oportunidade" e "autoridade local".
 
 CAPACIDADES ESPECIAIS:
-- Você cria CHECKLISTS de otimização detalhados.
-- Você gera PLANILHAS em formato CSV (para Excel) para controle de clientes.
-- Você pode criar arquivos em QUALQUER formato (.txt, .md, .csv, scripts, etc).
+- Você cria CHECKLISTS de prospecção e otimização cirúrgicos.
+- Você gera PLANILHAS CSV focadas em CRM e controle de prospecção.
+- Você domina gatilhos mentais para prospecção fria.
 
-Ao criar um arquivo para download, use o seguinte formato de bloco de código:
+Ao criar um arquivo para download, use:
 \`\`\`extensao:nome_do_arquivo.ext
 conteudo aqui
 \`\`\`
 
-Se o usuário pedir informações baseadas em arquivos, use EXCLUSIVAMENTE o contexto abaixo.
-ARQUIVOS NA BASE DE DADOS:
+BASE DE CONHECIMENTO CRÍTICA (USE ESTE CONTEÚDO PRIORITARIAMENTE):
 ${trimmedFileContext}`;
       } else {
-        systemPromptText = `Você é um assistente geral amigável e fácil de entender. 
-Ajude em QUALQUER assunto: criação de planilhas, Excel, dúvidas gerais, ideias, etc.
-Sempre responda de forma muito simples e didática. 
+        systemPromptText = `Você é um assistente sênior de produtividade e análise de dados.
+Seu objetivo é resolver problemas complexos (Excel, Planilhas, Organização) de forma ultra simples.
 
-CAPACIDADES ESPECIAIS:
-- Você é expert em fórmulas de Excel e Planilhas Google.
-- Você cria listas de tarefas (checklists) incríveis.
-- Você gera arquivos em qualquer formato para o usuário baixar.
+CAPACIDADES:
+- Expert em fórmulas complexas de Excel/Sheets.
+- Gerador de checklists de execução impecável.
+- Criação de arquivos estruturados (.csv, .txt, .md).
 
-Ao criar um arquivo para download (como uma planilha CSV), use:
+Ao criar um arquivo para download, use:
 \`\`\`csv:planilha_vendas.csv
 ID,Cliente,Valor
 1,Empresa X,500
 \`\`\`
-Use sempre responder de forma didática.`;
+Seja didático e focado em eficiência.`;
       }
 
       const chatHistory = newMessages.slice(1).map((msg) => ({
@@ -490,7 +493,7 @@ Use sempre responder de forma didática.`;
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col h-full min-w-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-white/5 bg-[#0A0F14]/80 backdrop-blur-md flex-shrink-0 relative z-20 shadow-sm">
+        <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-white/5 bg-[#0D1219]/90 backdrop-blur-md flex-shrink-0 relative z-20 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
           <div className="flex items-center gap-3">
             <button 
               className="md:hidden p-1.5 bg-slate-800/80 border border-white/10 rounded-md text-slate-300 hover:bg-slate-700 hover:text-emerald-400 transition"
@@ -498,39 +501,47 @@ Use sempre responder de forma didática.`;
             >
               <Menu className="h-5 w-5" />
             </button>
-            <div className="bg-gradient-to-br from-emerald-500/20 to-teal-500/10 p-2 rounded-lg border border-emerald-500/30 hidden md:flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.15)]">
-              <Bot className="h-5 w-5 text-emerald-400" />
+            <div className="bg-gradient-to-br from-emerald-500/20 to-teal-500/10 p-2.5 rounded-xl border border-emerald-500/30 hidden md:flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.15)] overflow-hidden relative">
+              <div className="absolute inset-0 bg-emerald-400/5 animate-pulse"></div>
+              <Bot className="h-5 w-5 text-emerald-400 relative z-10" />
             </div>
             <div>
-              <h1 className="font-heading font-semibold text-slate-100 leading-tight text-lg tracking-wide">
+              <h1 className="font-heading font-bold text-slate-100 leading-tight text-lg tracking-tight">
                 Assistente <span className={assistantType === 'gmn' ? 'text-emerald-400' : 'text-indigo-400'}>
-                  {assistantType === 'gmn' ? 'GMN' : 'Geral'}
+                  {assistantType === 'gmn' ? 'PRO Estratégico' : 'Geral Expert'}
                 </span>
               </h1>
-              <p className="text-[11px] md:text-xs text-slate-500 mt-0.5 uppercase tracking-wider font-semibold">
-                {assistantType === 'gmn' ? 'Inteligência de Vendas' : 'Suporte & Planilhas'}
-              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                  {assistantType === 'gmn' ? 'Analista de Conversão' : 'Automação & Dados'}
+                </p>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-emerald-500/5 border border-emerald-500/20 rounded-full">
+              <Database className="h-3 w-3 text-emerald-400" />
+              <span className="text-[10px] font-bold text-emerald-300/80 uppercase tracking-tighter">Contexto: {activeFilesCount} arquivos</span>
+            </div>
             <button
               onClick={() => {
                 setTempApiKey(apiKey);
                 setTempGeneralApiKey(generalApiKey);
                 setIsSettingsOpen(true);
               }}
-              className="flex items-center justify-center p-2 rounded-lg bg-slate-800/40 hover:bg-slate-800/80 border border-emerald-500/20 hover:border-emerald-500/50 transition-all tooltip-trigger relative group text-emerald-400/80 hover:text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.05)]"
+              className="flex items-center justify-center p-2.5 rounded-xl bg-slate-800/40 hover:bg-slate-800/80 border border-white/5 hover:border-emerald-500/40 transition-all text-slate-400 hover:text-emerald-400"
               title="Configurações da API"
             >
               <Settings2 className="h-5 w-5" />
             </button>
             <Link 
               href="/knowledge" 
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 hover:bg-slate-800/80 border border-emerald-500/20 hover:border-emerald-500/50 rounded-md transition-all text-emerald-100 hover:text-white shadow-[0_0_10px_rgba(16,185,129,0.05)]"
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-95"
             >
-              <Database className="h-4 w-4 text-emerald-400/80" />
-              <span className="text-xs font-medium hidden sm:inline">
-                {activeFilesCount} Arquivos
+              <Database className="h-4 w-4" />
+              <span className="text-xs font-bold hidden sm:inline uppercase tracking-wider">
+                Base
               </span>
             </Link>
           </div>
@@ -658,32 +669,35 @@ Use sempre responder de forma didática.`;
               <div 
                 className={`px-4 py-3 rounded-2xl ${
                   msg.role === 'user'
-                    ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 border border-indigo-400/20 text-white rounded-tr-sm shadow-lg shadow-indigo-500/10'
+                    ? 'bg-[#1E293B] border border-white/5 text-slate-100 rounded-tr-sm shadow-xl'
                     : assistantType === 'gmn' 
-                      ? 'bg-[#111A22]/90 border border-emerald-500/20 text-emerald-50 rounded-tl-sm shadow-[0_4px_20px_rgba(0,0,0,0.2)] backdrop-blur-sm'
-                      : 'bg-slate-800/80 border border-white/10 text-slate-100 rounded-tl-sm shadow-xl'
+                      ? 'bg-[#0F172A] border border-emerald-500/10 text-slate-200 rounded-tl-sm shadow-2xl relative overflow-hidden group/msg'
+                      : 'bg-[#0F172A] border border-indigo-500/10 text-slate-200 rounded-tl-sm shadow-2xl relative overflow-hidden group/msg'
                 } max-w-full`}
               >
+                {msg.role === 'model' && (
+                  <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${assistantType === 'gmn' ? 'from-emerald-500/5' : 'from-indigo-500/5'} to-transparent pointer-events-none opacity-0 group-hover/msg:opacity-100 transition-opacity duration-500`}></div>
+                )}
                 {msg.role === 'user' ? (
-                  <div className="whitespace-pre-wrap text-[13.5px] md:text-[14.5px] leading-relaxed break-words font-medium">
+                  <div className="whitespace-pre-wrap text-[13.5px] md:text-[14.5px] leading-relaxed break-words font-medium text-slate-200">
                     {msg.content}
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-4 relative z-10">
                     {msg.image && (
-                      <div className="relative group">
+                      <div className="relative group/img overflow-hidden rounded-xl border border-white/10 shadow-2xl">
                         <img 
                           src={msg.image} 
                           alt="Generated AI" 
-                          className="rounded-lg w-full max-w-sm border border-white/10 shadow-lg cursor-pointer hover:scale-[1.02] transition-transform" 
+                          className="w-full max-w-sm cursor-pointer hover:scale-[1.03] transition-transform duration-500" 
                           onClick={() => window.open(msg.image, '_blank')}
                         />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-lg pointer-events-none">
-                          <ExternalLink className="h-5 w-5 text-white" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-all duration-300 pointer-events-none">
+                          <ExternalLink className="h-6 w-6 text-white scale-75 group-hover/img:scale-100 transition-transform" />
                         </div>
                       </div>
                     )}
-                    <div className="prose prose-sm prose-invert prose-emerald max-w-none break-words leading-relaxed text-[13.5px] md:text-[14.5px]">
+                    <div className="prose prose-sm prose-invert prose-emerald max-w-none break-words leading-relaxed text-[13.5px] md:text-[14.5px] font-medium text-slate-300">
                       <Markdown
                         components={{
                           code({ node, inline, className, children, ...props }: any) {
@@ -694,17 +708,20 @@ Use sempre responder de forma didática.`;
                               const lang = match[1];
                               const filename = match[2];
                               return (
-                                <div className="my-4 rounded-lg overflow-hidden border border-white/10 bg-black/30">
-                                  <div className="flex items-center justify-between px-3 py-2 bg-white/5 border-b border-white/10">
-                                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">{filename}</span>
+                                <div className="my-5 rounded-xl overflow-hidden border border-white/5 bg-black/40 shadow-2xl">
+                                  <div className="flex items-center justify-between px-4 py-2.5 bg-white/5 border-b border-white/5">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                                      <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">{filename}</span>
+                                    </div>
                                     <button 
                                       onClick={() => downloadFile(String(children).replace(/\n$/, ''), filename)}
-                                      className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-tight transition-all"
+                                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-tight transition-all border border-emerald-500/20 hover:border-emerald-500/40"
                                     >
-                                      <Download className="h-3 w-3" /> Salvar Arquivo
+                                      <Download className="h-3.5 w-3.5" /> Baixar
                                     </button>
                                   </div>
-                                  <pre className="p-4 overflow-x-auto text-[12px]">
+                                  <pre className="p-5 overflow-x-auto text-[12px] bg-black/20">
                                     <code className={`language-${lang}`} {...props}>
                                       {children}
                                     </code>

@@ -34,7 +34,7 @@ export default function KnowledgeBase() {
                 name: `${f.name} > ${filename}`,
                 type: 'text',
                 status: 'Processado',
-                content: textContent.trim() ? textContent.substring(0, 100) + (textContent.length > 100 ? '...' : '') : '[Arquivo vazio]'
+                content: textContent.trim() ? textContent.substring(0, 50000) : '[Arquivo vazio]'
               });
             }
           }
@@ -47,12 +47,12 @@ export default function KnowledgeBase() {
         }
         continue;
       }
-
+ 
       let content = '';
       try {
         if (f.name.match(/\.(txt|csv|md)$/i) || f.type.startsWith('text/')) {
           content = await f.text();
-          content = content.trim() ? content.substring(0, 100) + (content.length > 100 ? '...' : '') : '[Arquivo vazio]';
+          content = content.trim() ? content.substring(0, 50000) : '[Arquivo vazio]';
         } else {
           content = `[Conteúdo binário - ${Math.round(f.size / 1024)} KB]`;
         }
