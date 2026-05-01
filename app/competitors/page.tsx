@@ -74,21 +74,21 @@ Formate a resposta em Markdown usando títulos (##), listas e negritos (sem tags
   };
 
   return (
-    <div className="p-4 md:p-8 pb-24 md:pb-8 max-w-6xl mx-auto">
+    <div className="p-4 md:p-8 pb-32 md:pb-8 max-w-6xl mx-auto">
       <div className="mb-6 md:mb-8">
-        <h1 className="font-heading text-2xl md:text-3xl font-bold tracking-tight text-slate-100">Análise de Concorrentes</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Descubra o que seus vizinhos estão fazendo de melhor no Google e ultrapasse todos eles.
+        <h1 className="font-heading text-2xl md:text-3xl font-bold tracking-tight text-white">Concorrência</h1>
+        <p className="mt-2 text-xs md:text-sm text-slate-400">
+          Analise o que os vizinhos estão fazendo no Google Maps.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
         {/* Painel de Configuração */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="border border-white/10 bg-white/5 backdrop-blur-xl rounded-xl p-5 md:p-6 shadow-sm">
-            <h2 className="font-heading text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
+          <div className="border border-white/5 bg-slate-900/40 backdrop-blur-xl rounded-2xl p-6 shadow-sm">
+            <h2 className="font-heading text-lg font-bold text-white mb-6 flex items-center gap-2">
               <Search className="h-5 w-5 text-indigo-400" />
-              Perfis a Analisar
+              Análise
             </h2>
             
             <div className="space-y-4">

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { useFiles } from '@/app/context/FileContext';
 import { useSettings } from '@/app/context/SettingsContext';
+import { supabase } from '@/lib/supabase';
 import { Bot, Send, User, Loader2, Database, Menu, Plus, MessageSquare, Trash2, X, Settings2, Key, ExternalLink, Cpu } from 'lucide-react';
 import Markdown from 'react-markdown';
 import Link from 'next/link';
@@ -11,6 +12,7 @@ import Link from 'next/link';
 interface Message {
   role: 'user' | 'model';
   content: string;
+  image?: string; // Base64 image
 }
 
 interface ChatSession {
@@ -18,120 +20,194 @@ interface ChatSession {
   title: string;
   messages: Message[];
   updatedAt: number;
+  type: 'gmn' | 'general';
 }
 
-const DEFAULT_MESSAGE: Message = {
+const GMN_DEFAULT_MESSAGE: Message = {
   role: 'model',
-  content: 'Olá! Sou seu Assistente especializado em Google Meu Negócio. Sei que nossa meta é fechar serviços com 20 empresas este mês. Estou integrado aos arquivos da sua Base de Conhecimento e pronto para ajudar a otimizar perfis, criar abordagens de prospecção matadoras e formular planos de ação. Qual é o perfil ou planejamento em que vamos trabalhar agora?',
+  content: 'Olá! Sou seu Assistente GMN. Sou direto e profissional. Analiso seus arquivos e ajudo com SEO Local, prospecção e otimização. Como posso ajudar seu negócio hoje?',
+};
+
+const GENERAL_DEFAULT_MESSAGE: Message = {
+  role: 'model',
+  content: 'Oi! Eu sou seu assistente para tudo. Posso te ajudar com planilhas, Excel, ideias criativas ou qualquer dúvida que você tiver de um jeito bem fácil de entender. O que vamos fazer agora?',
 };
 
 export default function AssistantPage() {
   const { files } = useFiles();
-  const { apiKey, setApiKey, apiTokensUsed, addTokensUsed } = useSettings();
+  const { apiKey, setApiKey, generalApiKey, setGeneralApiKey, apiTokensUsed, addTokensUsed } = useSettings();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
-  const [messages, setMessages] = useState<Message[]>([DEFAULT_MESSAGE]);
+  const [messages, setMessages] = useState<Message[]>([GMN_DEFAULT_MESSAGE]);
+  const [assistantType, setAssistantType] = useState<'gmn' | 'general'>('gmn');
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [tempApiKey, setTempApiKey] = useState('');
+  const [tempGeneralApiKey, setTempGeneralApiKey] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const saveSessions = (updatedSessions: ChatSession[]) => {
-    setSessions(updatedSessions);
-    localStorage.setItem('gmn_chat_sessions', JSON.stringify(updatedSessions));
-  };
+  const userEmail = 'souturbo149@gmail.com';
 
-  const createNewSession = () => {
+  const saveSessionsToSupabase = useCallback(async (updatedSessions: ChatSession[]) => {
+    try {
+      if (!supabase) return;
+      await supabase
+        .from('chats')
+        .upsert(updatedSessions.map(s => ({
+          id: s.id,
+          title: s.title,
+          messages: s.messages,
+          type: s.type,
+          user_email: userEmail,
+          updated_at: new Date(s.updatedAt).toISOString()
+        })));
+    } catch (err) {
+      console.error('Error saving sessions to Supabase:', err);
+    }
+  }, [userEmail]);
+
+  const createNewSession = useCallback(async (type: 'gmn' | 'general' = 'gmn') => {
+    const defaultMsg = type === 'gmn' ? GMN_DEFAULT_MESSAGE : GENERAL_DEFAULT_MESSAGE;
     const newSession: ChatSession = {
-      id: Date.now().toString(),
-      title: 'Nova Conversa',
-      messages: [DEFAULT_MESSAGE],
+      id: `${userEmail}_${Date.now()}`,
+      title: type === 'gmn' ? 'Assistente GMN' : 'Assistente Geral',
+      messages: [defaultMsg],
       updatedAt: Date.now(),
+      type: type,
     };
-    // Note: this uses functional update style or depends on current state
-    // To be perfectly safe with useEffect dependencies, we should use functional updates
+    
     setSessions(prev => {
       const updated = [newSession, ...prev];
       localStorage.setItem('gmn_chat_sessions', JSON.stringify(updated));
+      saveSessionsToSupabase(updated);
       return updated;
     });
     setCurrentSessionId(newSession.id);
     setMessages(newSession.messages);
+    setAssistantType(type);
     setIsSidebarOpen(false);
-  };
+  }, [saveSessionsToSupabase, userEmail]);
 
   useEffect(() => {
-    const savedSessions = localStorage.getItem('gmn_chat_sessions');
-    if (savedSessions) {
+    const loadSessions = async () => {
+      // Local fallback first
+      const savedSessions = localStorage.getItem('gmn_chat_sessions');
+      if (savedSessions) {
+        try {
+          const parsed = JSON.parse(savedSessions);
+          if (parsed.length > 0) {
+            setSessions(parsed);
+            setCurrentSessionId(parsed[0].id);
+            setMessages(parsed[0].messages);
+            setAssistantType(parsed[0].type || 'gmn');
+          }
+        } catch (e) {}
+      }
+
+      // Supabase sync (filtered by user email)
       try {
-        const parsed = JSON.parse(savedSessions);
-        if (parsed.length > 0) {
-          setSessions(parsed);
-          setCurrentSessionId(parsed[0].id);
-          setMessages(parsed[0].messages);
-        } else {
+        const { data, error } = await supabase
+          .from('chats')
+          .select('*')
+          .eq('user_email', userEmail)
+          .order('updated_at', { ascending: false });
+        
+        if (!error && data && data.length > 0) {
+          const mappedSessions: ChatSession[] = data.map(item => ({
+            id: item.id,
+            title: item.title,
+            type: item.type || 'gmn',
+            messages: item.messages || (item.type === 'general' ? [GENERAL_DEFAULT_MESSAGE] : [GMN_DEFAULT_MESSAGE]),
+            updatedAt: new Date(item.updated_at).getTime()
+          }));
+          setSessions(mappedSessions);
+          setCurrentSessionId(mappedSessions[0].id);
+          setMessages(mappedSessions[0].messages);
+          setAssistantType(mappedSessions[mappedSessions.length - 1].type || 'gmn'); // approximate
+          localStorage.setItem('gmn_chat_sessions', JSON.stringify(mappedSessions));
+        } else if (!savedSessions) {
           createNewSession();
         }
-      } catch (e) {
-        createNewSession();
+      } catch (err) {
+        if (!savedSessions) createNewSession();
       }
-    } else {
-      createNewSession();
-    }
-  }, []);
+    };
+    
+    loadSessions();
+  }, [createNewSession, userEmail]);
 
   const loadSession = (id: string) => {
     const session = sessions.find((s) => s.id === id);
     if (session) {
       setCurrentSessionId(session.id);
       setMessages(session.messages);
+      setAssistantType(session.type || 'gmn');
       setIsSidebarOpen(false);
     }
   };
 
-  const deleteSession = (id: string, e: React.MouseEvent) => {
+  const deleteSession = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const updatedSessions = sessions.filter((s) => s.id !== id);
+    
+    try {
+      await supabase.from('chats').delete().eq('id', id).eq('user_email', userEmail);
+    } catch (err) {}
+
     if (updatedSessions.length === 0) {
       setSessions([]);
       createNewSession();
     } else {
-      saveSessions(updatedSessions);
+      setSessions(updatedSessions);
+      localStorage.setItem('gmn_chat_sessions', JSON.stringify(updatedSessions));
       if (currentSessionId === id || !currentSessionId) {
         setCurrentSessionId(updatedSessions[0].id);
         setMessages(updatedSessions[0].messages);
+        setAssistantType(updatedSessions[0].type || 'gmn');
       }
     }
   };
 
-  const updateCurrentSession = (newMessages: Message[]) => {
+  const updateCurrentSession = async (newMessages: Message[]) => {
     setMessages(newMessages);
     
-    // Auto-generate title based on first user message if title is default
     let newTitle = undefined;
+    const currentSession = sessions.find((s) => s.id === currentSessionId);
     if (
       newMessages.length === 3 && 
       newMessages[1].role === 'user' && 
-      sessions.find((s) => s.id === currentSessionId)?.title === 'Nova Conversa'
+      currentSession?.title === 'Nova Conversa'
     ) {
       newTitle = newMessages[1].content.substring(0, 30) + (newMessages[1].content.length > 30 ? '...' : '');
     }
 
+    const sessionToUpdate: ChatSession = {
+      ...(currentSession || { 
+        id: currentSessionId, 
+        title: assistantType === 'gmn' ? 'Assistente GMN' : 'Assistente Geral',
+        type: assistantType as 'gmn' | 'general',
+        messages: newMessages,
+        updatedAt: Date.now()
+      }),
+      messages: newMessages,
+      updatedAt: Date.now(),
+      title: newTitle || currentSession?.title || (assistantType === 'gmn' ? 'Assistente GMN' : 'Assistente Geral'),
+    };
+
     const updatedSessions = sessions.map((s) => {
-      if (s.id === currentSessionId) {
-        return {
-          ...s,
-          messages: newMessages,
-          updatedAt: Date.now(),
-          title: newTitle || s.title,
-        };
-      }
+      if (s.id === currentSessionId) return sessionToUpdate;
       return s;
     }).sort((a, b) => b.updatedAt - a.updatedAt);
     
-    saveSessions(updatedSessions);
+    if (!sessions.find(s => s.id === currentSessionId)) {
+      updatedSessions.unshift(sessionToUpdate);
+    }
+
+    setSessions(updatedSessions);
+    localStorage.setItem('gmn_chat_sessions', JSON.stringify(updatedSessions));
+    saveSessionsToSupabase(updatedSessions);
   };
 
   const scrollToBottom = () => {
@@ -152,56 +228,136 @@ export default function AssistantPage() {
     setLoading(true);
 
     try {
-      const activeApiKey = apiKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      const activeApiKey = assistantType === 'gmn' ? apiKey : (generalApiKey || apiKey);
       if (!activeApiKey) {
         throw new Error('Chave de API não configurada. Configure sua chave nas configurações.');
       }
 
-      const ai = new GoogleGenAI({ apiKey: activeApiKey });
+      const client = new GoogleGenAI({ apiKey: activeApiKey });
 
+      // Logic to detect if the user wants an image
+      const imageKeywords = ['crie uma imagem', 'gerar imagem', 'desenhe', 'create image', 'generate image', 'faz uma imagem', 'imagem de'];
+      const wantsImage = imageKeywords.some(keyword => userMsg.toLowerCase().includes(keyword));
+
+      if (wantsImage) {
+        // Use gemini-2.0-flash experimental for image generation in new SDK
+        const fetchImageWithRetry = async (retries: number = 2): Promise<any> => {
+          try {
+            return await client.models.generateContent({
+              model: 'gemini-2.0-flash-exp',
+              contents: [{ role: 'user', parts: [{ text: `Aja como um gerador de imagens. Produza uma imagem baseada nesta descrição: ${userMsg}` }] }],
+              config: {
+                // @ts-ignore - Assuming experimental image gen support
+                responseMimeType: 'image/png' 
+              }
+            });
+          } catch (err: any) {
+            const errMsg = err.message || "";
+            if ((errMsg.includes('503') || errMsg.includes('UNAVAILABLE') || errMsg.includes('high demand')) && retries > 0) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              return fetchImageWithRetry(retries - 1);
+            }
+            throw err;
+          }
+        };
+
+        const response = await fetchImageWithRetry();
+
+        let imageBase64 = '';
+        let textResult = '';
+
+        if (response.candidates?.[0]?.content?.parts) {
+          for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData?.data) {
+              imageBase64 = part.inlineData.data;
+            } else if (part.text) {
+              textResult += part.text;
+            }
+          }
+        }
+
+        if (imageBase64) {
+          const finalContent = textResult || "Aqui está a imagem que você pediu:";
+          updateCurrentSession([
+            ...newMessages, 
+            { 
+              role: 'model', 
+              content: finalContent,
+              image: `data:image/png;base64,${imageBase64}`
+            }
+          ]);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Standard Text Generation
       const processedFiles = files.filter((f) => f.status === 'Processado' && f.content);
       const fileContext = processedFiles
         .map((f) => `### Arquivo: ${f.name}\n${f.content}`)
         .join('\n\n');
 
-      const trimmedFileContext = fileContext.substring(0, 30000); // Prevent payload too large
+      const trimmedFileContext = fileContext.substring(0, 30000);
 
-      const systemPromptText = `Você é um assistente estratégico expert em SEO Local e Google Meu Negócio (GMN).
-O usuário é um profissional que trabalha otimizando perfis de empresas no GMN para aumentar as vendas e o SEO local delas, e tem a meta agressiva de fechar serviços com 20 empresas por mês.
-Sua missão é ajudar o usuário a alcançar essa meta, fornecendo:
-1. Dicas diretas e avançadas de otimização de fichas do GMN.
-2. Argumentos de vendas focados em conversão e dor do cliente (para prospecção estruturada).
-3. Resoluções práticas de análise de concorrentes e criação de planos de ação rápidos.
+      let systemPromptText = '';
+      let modelToUse = assistantType === 'gmn' ? 'gemini-1.5-flash' : 'gemini-1.5-pro';
+      
+      if (assistantType === 'gmn') {
+        systemPromptText = `Você é um assistente estratégico profissional e resumido, expert em SEO Local e Google Meu Negócio (GMN).
+Sua linguagem deve ser técnica porém fácil de entender, focada em prospecção e fechamento de clientes.
+Seja CONCISO. Vá direto ao ponto. Use tópicos quando possível.
 
-Responda em português (BR). Use Markdown (sem sintaxes markdown incompletas). Seja proativo, focado no aspecto comercial e dê exemplos práticos (templates de mensagens, estruturas de SEO on-page do mapa, etc).
-
-Se o usuário mencionar ou pedir informações baseadas em arquivos, extraia as respostas do contexto dos arquivos abaixo. Se a informação não estiver lá, use seus sólidos conhecimentos em vendas e GMN sem alucinar sobre os arquivos.
-
-ARQUIVOS NA BASE DE DADOS (${processedFiles.length} carregados):
+Se o usuário pedir informações baseadas em arquivos, use EXCLUSIVAMENTE o contexto abaixo.
+ARQUIVOS NA BASE DE DADOS:
 ${trimmedFileContext}`;
+      } else {
+        systemPromptText = `Você é um assistente geral amigável e fácil de entender. 
+Ajude em QUALQUER assunto: criação de planilhas, Excel, dúvidas gerais, ideias, etc.
+Sempre responda de forma muito simples e didática. Se for Excel, forneça fórmulas prontas.`;
+      }
 
-      const chatHistory = newMessages.map((msg) => ({
+      const chatHistory = newMessages.slice(1).map((msg) => ({
         role: msg.role,
         parts: [{ text: msg.content }],
       }));
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          { role: 'user', parts: [{ text: systemPromptText }] },
-          { role: 'model', parts: [{ text: 'Entendido. Usarei todas as informações para responder da melhor maneira possível.' }] },
-          ...chatHistory,
-        ],
-      });
-
-      if (response.text) {
-        updateCurrentSession([...newMessages, { role: 'model', content: String(response.text) }]);
-        if (response.usageMetadata?.totalTokenCount) {
-          addTokensUsed(response.usageMetadata.totalTokenCount);
+      const fetchWithRetry = async (model: string, retries: number = 2): Promise<any> => {
+        try {
+          return await client.models.generateContent({
+            model: model,
+            contents: [
+              { role: 'user', parts: [{ text: systemPromptText }] },
+              { role: 'model', parts: [{ text: 'Entendido. Responderei de acordo com minha personalidade e contexto.' }] },
+              ...chatHistory,
+            ],
+          });
+        } catch (err: any) {
+          const errMsg = err.message || "";
+          const isRetryable = errMsg.includes('503') || 
+                            errMsg.includes('UNAVAILABLE') || 
+                            errMsg.includes('high demand') ||
+                            errMsg.includes('quota');
+          
+          if (isRetryable && retries > 0) {
+            // Exponential backoff: 2s, 4s
+            await new Promise(resolve => setTimeout(resolve, 2000 * (3 - retries)));
+            return fetchWithRetry(model, retries - 1);
+          }
+          
+          // Fallback to flash if pro is unavailable
+          if (model === 'gemini-1.5-pro' && isRetryable) {
+            return fetchWithRetry('gemini-1.5-flash', 1);
+          }
+          
+          throw err;
         }
-      } else {
-        throw new Error('A inteligência artificial não retornou dados.');
-      }
+      };
+
+      const response = await fetchWithRetry(modelToUse);
+
+      const responseText = response.text || "";
+      updateCurrentSession([...newMessages, { role: 'model', content: responseText }]);
+      addTokensUsed(userMsg.length + responseText.length);
     } catch (err: any) {
       console.error(err);
       updateCurrentSession([
@@ -223,7 +379,7 @@ ${trimmedFileContext}`;
   const activeFilesCount = files.length;
 
   return (
-    <div className="fixed inset-0 pb-16 md:relative md:pb-0 flex md:h-full overflow-hidden bg-[#0A0F14] z-20">
+    <div className="fixed inset-0 pb-[72px] md:relative md:pb-0 flex md:h-full overflow-hidden bg-[#0A0F14] z-20">
       {/* History Sidebar */}
       <div className={`fixed inset-y-0 left-0 z-40 w-72 bg-slate-900/90 backdrop-blur-xl border-r border-emerald-500/10 shadow-[0_0_40px_rgba(16,185,129,0.1)] transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
@@ -236,12 +392,18 @@ ${trimmedFileContext}`;
             </button>
           </div>
           
-          <div className="p-4">
+          <div className="p-4 space-y-3">
             <button 
-              onClick={createNewSession}
-              className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-white font-medium text-sm transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] border border-emerald-400/20"
+              onClick={() => createNewSession('gmn')}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-white font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] border border-emerald-400/20 active:scale-95"
             >
-              <Plus className="h-4 w-4" /> Nova Conversa
+              <Plus className="h-4 w-4" /> Novo GMN
+            </button>
+            <button 
+              onClick={() => createNewSession('general')}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 rounded-lg text-white font-bold text-xs uppercase tracking-wider transition-all border border-white/5 shadow-lg active:scale-95"
+            >
+              <Cpu className="h-4 w-4 text-indigo-400" /> Geral (Excel)
             </button>
           </div>
 
@@ -296,14 +458,21 @@ ${trimmedFileContext}`;
               <Bot className="h-5 w-5 text-emerald-400" />
             </div>
             <div>
-              <h1 className="font-heading font-semibold text-slate-100 leading-tight text-lg tracking-wide">Assistente <span className="text-emerald-400">GMN</span></h1>
-              <p className="text-[11px] md:text-xs text-emerald-500/70 mt-0.5 uppercase tracking-wider font-semibold">Inteligência de Vendas</p>
+              <h1 className="font-heading font-semibold text-slate-100 leading-tight text-lg tracking-wide">
+                Assistente <span className={assistantType === 'gmn' ? 'text-emerald-400' : 'text-indigo-400'}>
+                  {assistantType === 'gmn' ? 'GMN' : 'Geral'}
+                </span>
+              </h1>
+              <p className="text-[11px] md:text-xs text-slate-500 mt-0.5 uppercase tracking-wider font-semibold">
+                {assistantType === 'gmn' ? 'Inteligência de Vendas' : 'Suporte & Planilhas'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
                 setTempApiKey(apiKey);
+                setTempGeneralApiKey(generalApiKey);
                 setIsSettingsOpen(true);
               }}
               className="flex items-center justify-center p-2 rounded-lg bg-slate-800/40 hover:bg-slate-800/80 border border-emerald-500/20 hover:border-emerald-500/50 transition-all tooltip-trigger relative group text-emerald-400/80 hover:text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.05)]"
@@ -338,7 +507,7 @@ ${trimmedFileContext}`;
               <div className="p-5 space-y-5">
                 <div>
                   <label className="block text-sm font-medium text-emerald-100/70 mb-1">
-                    Sua Chave API (Opcional)
+                    Chave API GMN (Essencial)
                   </label>
                   <input
                     type="password"
@@ -347,8 +516,21 @@ ${trimmedFileContext}`;
                     onChange={(e) => setTempApiKey(e.target.value)}
                     className="w-full rounded-lg bg-black/50 border border-emerald-500/20 px-3 py-2 text-emerald-50 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all font-mono text-sm shadow-inner"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-indigo-200/70 mb-1">
+                    Chave API Geral (Avatar Roxo/Excel)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="AIzaSy..."
+                    value={tempGeneralApiKey}
+                    onChange={(e) => setTempGeneralApiKey(e.target.value)}
+                    className="w-full rounded-lg bg-black/50 border border-indigo-500/20 px-3 py-2 text-indigo-50 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono text-sm shadow-inner"
+                  />
                   <p className="text-xs text-slate-500 mt-2">
-                    Se você não fornecer uma chave, o assistente tentará usar a chave padrão do sistema.
+                    Cada assistente pode ter sua própria chave para evitar limites de uso compartilhado.
                   </p>
                 </div>
 
@@ -388,6 +570,7 @@ ${trimmedFileContext}`;
                 <button 
                   onClick={() => {
                     setApiKey(tempApiKey);
+                    setGeneralApiKey(tempGeneralApiKey);
                     setIsSettingsOpen(false);
                   }}
                   className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-sm font-bold tracking-wide transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)]"
@@ -415,24 +598,41 @@ ${trimmedFileContext}`;
                   {msg.role === 'user' ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
                 </div>
                 <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 select-none">
-                  {msg.role === 'user' ? 'Você' : 'GMN Assist'}
+                  {msg.role === 'user' ? 'Você' : (assistantType === 'gmn' ? 'GMN Assist' : 'Geral Assist')}
                 </span>
               </div>
               
               <div
-                className={`px-5 py-3.5 rounded-2xl ${
+                className={`px-4 py-3 rounded-2xl ${
                   msg.role === 'user'
-                    ? 'bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 text-slate-100 rounded-tr-sm shadow-sm'
-                    : 'bg-[#111A22]/90 border border-emerald-500/20 text-emerald-50 rounded-tl-sm shadow-[0_4px_20px_rgba(0,0,0,0.2)] backdrop-blur-sm'
-                }`}
+                    ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 border border-indigo-400/20 text-white rounded-tr-sm shadow-lg shadow-indigo-500/10'
+                    : assistantType === 'gmn' 
+                      ? 'bg-[#111A22]/90 border border-emerald-500/20 text-emerald-50 rounded-tl-sm shadow-[0_4px_20px_rgba(0,0,0,0.2)] backdrop-blur-sm'
+                      : 'bg-slate-800/80 border border-white/10 text-slate-100 rounded-tl-sm shadow-xl'
+                } max-w-full`}
               >
                 {msg.role === 'user' ? (
-                  <div className="whitespace-pre-wrap text-[14.5px] leading-relaxed break-words font-medium">
+                  <div className="whitespace-pre-wrap text-[13.5px] md:text-[14.5px] leading-relaxed break-words font-medium">
                     {msg.content}
                   </div>
                 ) : (
-                  <div className="prose prose-sm prose-invert prose-emerald max-w-none break-words leading-relaxed text-[14.5px]">
-                    <Markdown>{msg.content}</Markdown>
+                  <div className="space-y-4">
+                    {msg.image && (
+                      <div className="relative group">
+                        <img 
+                          src={msg.image} 
+                          alt="Generated AI" 
+                          className="rounded-lg w-full max-w-sm border border-white/10 shadow-lg cursor-pointer hover:scale-[1.02] transition-transform" 
+                          onClick={() => window.open(msg.image, '_blank')}
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-lg pointer-events-none">
+                          <ExternalLink className="h-5 w-5 text-white" />
+                        </div>
+                      </div>
+                    )}
+                    <div className="prose prose-sm prose-invert prose-emerald max-w-none break-words leading-relaxed text-[13.5px] md:text-[14.5px]">
+                      <Markdown>{msg.content}</Markdown>
+                    </div>
                   </div>
                 )}
               </div>

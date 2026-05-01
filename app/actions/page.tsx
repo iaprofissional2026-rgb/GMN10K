@@ -68,19 +68,21 @@ Formate usando Markdown limpo com cabeçalhos e listas, seja direto e persuasivo
   };
 
   return (
-    <div className="p-4 md:p-8 pb-24 md:pb-8 max-w-5xl mx-auto">
+    <div className="p-4 md:p-8 pb-32 md:pb-8 max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="font-heading text-3xl font-bold tracking-tight text-slate-100">Planos de Ação (Motor de Aprendizado)</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Gere planos de otimização de ficha GMN personalizados cruzando os dados da base com o nicho do lead.
+        <h1 className="font-heading text-2xl md:text-3xl font-bold tracking-tight text-white">Planos de Ação</h1>
+        <p className="mt-2 text-xs md:text-sm text-slate-400">
+          Crie estratégias personalizadas de GMN para seus leads.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="md:col-span-1 border border-white/10 bg-white/5 backdrop-blur-xl rounded-xl p-6 shadow-sm h-fit">
-          <div className="flex items-center gap-2 mb-6">
-            <Building2 className="h-5 w-5 text-indigo-400" />
-            <h2 className="font-heading text-lg font-semibold text-slate-100">Dados do Lead</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
+        <div className="lg:col-span-1 border border-white/5 bg-slate-900/40 backdrop-blur-xl rounded-2xl p-6 shadow-sm h-fit">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+              <Building2 className="h-5 w-5" />
+            </div>
+            <h2 className="font-heading text-lg font-bold text-white">Novo Plano</h2>
           </div>
           
           <div className="space-y-4">
