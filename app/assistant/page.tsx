@@ -240,15 +240,17 @@ export default function AssistantPage() {
       const wantsImage = imageKeywords.some(keyword => userMsg.toLowerCase().includes(keyword));
 
       if (wantsImage) {
-        // Use gemini-2.0-flash experimental for image generation in new SDK
+        // Use recommended image generation model
         const fetchImageWithRetry = async (retries: number = 2): Promise<any> => {
           try {
             return await client.models.generateContent({
-              model: 'gemini-2.0-flash-exp',
+              model: 'gemini-2.5-flash-image',
               contents: [{ role: 'user', parts: [{ text: `Aja como um gerador de imagens. Produza uma imagem baseada nesta descrição: ${userMsg}` }] }],
               config: {
-                // @ts-ignore - Assuming experimental image gen support
-                responseMimeType: 'image/png' 
+                imageConfig: {
+                  aspectRatio: "1:1",
+                  imageSize: "1K"
+                }
               }
             });
           } catch (err: any) {
@@ -300,7 +302,7 @@ export default function AssistantPage() {
       const trimmedFileContext = fileContext.substring(0, 30000);
 
       let systemPromptText = '';
-      let modelToUse = assistantType === 'gmn' ? 'gemini-1.5-flash' : 'gemini-1.5-pro';
+      let modelToUse = assistantType === 'gmn' ? 'gemini-3-flash-preview' : 'gemini-3.1-pro-preview';
       
       if (assistantType === 'gmn') {
         systemPromptText = `Você é um assistente estratégico profissional e resumido, expert em SEO Local e Google Meu Negócio (GMN).
@@ -345,8 +347,8 @@ Sempre responda de forma muito simples e didática. Se for Excel, forneça fórm
           }
           
           // Fallback to flash if pro is unavailable
-          if (model === 'gemini-1.5-pro' && isRetryable) {
-            return fetchWithRetry('gemini-1.5-flash', 1);
+          if (model === 'gemini-3.1-pro-preview' && isRetryable) {
+            return fetchWithRetry('gemini-3-flash-preview', 1);
           }
           
           throw err;
