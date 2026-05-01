@@ -62,7 +62,7 @@ export function FloatingMedia() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 flex items-center justify-center h-12 w-12 rounded-full bg-slate-900 shadow-[0_0_15px_rgba(16,185,129,0.3)] border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 hover:bg-slate-800 hover:scale-105 transition-all"
+        className="fixed bottom-24 md:bottom-6 left-4 md:left-auto md:right-6 z-50 flex items-center justify-center h-12 w-12 rounded-full bg-slate-900 shadow-[0_0_15px_rgba(16,185,129,0.3)] border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 hover:bg-slate-800 hover:scale-105 transition-all"
         title="Ouvir Foco"
       >
         <Music className="h-5 w-5" />
@@ -74,8 +74,8 @@ export function FloatingMedia() {
     <div 
       className={`fixed z-50 transition-all duration-300 ease-in-out ${
         isMinimized 
-          ? 'bottom-20 md:bottom-6 right-4 md:right-6 w-64'
-          : 'bottom-20 md:bottom-6 right-4 md:right-6 w-[85vw] md:w-80 shadow-2xl'
+          ? 'bottom-24 md:bottom-6 left-4 md:left-auto md:right-6 w-64'
+          : 'bottom-24 md:bottom-6 left-4 md:left-auto md:right-6 w-[85vw] md:w-80 shadow-2xl'
       }`}
     >
       <div className="bg-[#0A0F14]/95 backdrop-blur-xl border border-emerald-500/20 rounded-xl overflow-hidden shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex flex-col">

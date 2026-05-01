@@ -38,6 +38,30 @@ export default function AssistantPage() {
   const [tempApiKey, setTempApiKey] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const saveSessions = (updatedSessions: ChatSession[]) => {
+    setSessions(updatedSessions);
+    localStorage.setItem('gmn_chat_sessions', JSON.stringify(updatedSessions));
+  };
+
+  const createNewSession = () => {
+    const newSession: ChatSession = {
+      id: Date.now().toString(),
+      title: 'Nova Conversa',
+      messages: [DEFAULT_MESSAGE],
+      updatedAt: Date.now(),
+    };
+    // Note: this uses functional update style or depends on current state
+    // To be perfectly safe with useEffect dependencies, we should use functional updates
+    setSessions(prev => {
+      const updated = [newSession, ...prev];
+      localStorage.setItem('gmn_chat_sessions', JSON.stringify(updated));
+      return updated;
+    });
+    setCurrentSessionId(newSession.id);
+    setMessages(newSession.messages);
+    setIsSidebarOpen(false);
+  };
+
   useEffect(() => {
     const savedSessions = localStorage.getItem('gmn_chat_sessions');
     if (savedSessions) {
@@ -57,25 +81,6 @@ export default function AssistantPage() {
       createNewSession();
     }
   }, []);
-
-  const saveSessions = (updatedSessions: ChatSession[]) => {
-    setSessions(updatedSessions);
-    localStorage.setItem('gmn_chat_sessions', JSON.stringify(updatedSessions));
-  };
-
-  const createNewSession = () => {
-    const newSession: ChatSession = {
-      id: Date.now().toString(),
-      title: 'Nova Conversa',
-      messages: [DEFAULT_MESSAGE],
-      updatedAt: Date.now(),
-    };
-    const updatedSessions = [newSession, ...sessions];
-    saveSessions(updatedSessions);
-    setCurrentSessionId(newSession.id);
-    setMessages(newSession.messages);
-    setIsSidebarOpen(false);
-  };
 
   const loadSession = (id: string) => {
     const session = sessions.find((s) => s.id === id);
