@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { Sidebar } from '@/components/Sidebar';
@@ -15,19 +15,26 @@ export const metadata: Metadata = {
   description: 'Prospecção e Gestão Local',
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className={`${inter.variable} ${space.variable}`}>
-      <body className="flex h-screen bg-slate-950 font-sans text-slate-100 antialiased relative overflow-hidden" suppressHydrationWarning>
-        <div className="absolute inset-0 z-0 pointer-events-none">
+      <body className="flex h-screen supports-[height:100dvh]:h-[100dvh] bg-slate-950 font-sans text-slate-100 antialiased relative overflow-x-hidden" suppressHydrationWarning>
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
           <div className="absolute top-[-10%] left-[-10%] w-[80%] h-[40%] md:w-[40%] bg-indigo-600/30 rounded-full blur-[120px]"></div>
           <div className="absolute bottom-[-10%] right-[-10%] w-[80%] h-[40%] md:w-[40%] bg-teal-600/30 rounded-full blur-[120px]"></div>
         </div>
         <SettingsProvider>
           <FileProvider>
-            <div className="relative z-10 flex h-full w-full flex-col md:flex-row">
+            <div className="relative z-10 flex h-full w-full flex-col md:flex-row overflow-x-hidden">
               <Sidebar />
-              <main className="relative flex-1 overflow-y-auto pb-16 md:pb-0">
+              <main className="relative flex-1 overflow-y-auto overflow-x-hidden pb-16 md:pb-0">
                 {children}
               </main>
               <FloatingMedia />

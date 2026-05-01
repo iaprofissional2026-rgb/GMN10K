@@ -5,7 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 import { useFiles } from '@/app/context/FileContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { supabase } from '@/lib/supabase';
-import { Bot, Send, User, Loader2, Database, Menu, Plus, MessageSquare, Trash2, X, Settings2, Key, ExternalLink, Cpu } from 'lucide-react';
+import { Bot, Send, User, Loader2, Database, Menu, Plus, MessageSquare, Trash2, X, Settings2, Key, ExternalLink, Cpu, Copy, Check, Download } from 'lucide-react';
 import Markdown from 'react-markdown';
 import Link from 'next/link';
 
@@ -49,6 +49,26 @@ export default function AssistantPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const userEmail = 'souturbo149@gmail.com';
+
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, msgId: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(msgId);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const downloadFile = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const saveSessionsToSupabase = useCallback(async (updatedSessions: ChatSession[]) => {
     try {
@@ -309,13 +329,35 @@ export default function AssistantPage() {
 Sua linguagem deve ser técnica porém fácil de entender, focada em prospecção e fechamento de clientes.
 Seja CONCISO. Vá direto ao ponto. Use tópicos quando possível.
 
+CAPACIDADES ESPECIAIS:
+- Você cria CHECKLISTS de otimização detalhados.
+- Você gera PLANILHAS em formato CSV (para Excel) para controle de clientes.
+- Você pode criar arquivos em QUALQUER formato (.txt, .md, .csv, scripts, etc).
+
+Ao criar um arquivo para download, use o seguinte formato de bloco de código:
+\`\`\`extensao:nome_do_arquivo.ext
+conteudo aqui
+\`\`\`
+
 Se o usuário pedir informações baseadas em arquivos, use EXCLUSIVAMENTE o contexto abaixo.
 ARQUIVOS NA BASE DE DADOS:
 ${trimmedFileContext}`;
       } else {
         systemPromptText = `Você é um assistente geral amigável e fácil de entender. 
 Ajude em QUALQUER assunto: criação de planilhas, Excel, dúvidas gerais, ideias, etc.
-Sempre responda de forma muito simples e didática. Se for Excel, forneça fórmulas prontas.`;
+Sempre responda de forma muito simples e didática. 
+
+CAPACIDADES ESPECIAIS:
+- Você é expert em fórmulas de Excel e Planilhas Google.
+- Você cria listas de tarefas (checklists) incríveis.
+- Você gera arquivos em qualquer formato para o usuário baixar.
+
+Ao criar um arquivo para download (como uma planilha CSV), use:
+\`\`\`csv:planilha_vendas.csv
+ID,Cliente,Valor
+1,Empresa X,500
+\`\`\`
+Use sempre responder de forma didática.`;
       }
 
       const chatHistory = newMessages.slice(1).map((msg) => ({
@@ -602,9 +644,18 @@ Sempre responda de forma muito simples e didática. Se for Excel, forneça fórm
                 <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 select-none">
                   {msg.role === 'user' ? 'Você' : (assistantType === 'gmn' ? 'GMN Assist' : 'Geral Assist')}
                 </span>
+                {msg.role === 'model' && (
+                  <button 
+                    onClick={() => copyToClipboard(msg.content, `${index}`)}
+                    className="p-1 hover:bg-slate-800 rounded transition-colors text-slate-500 hover:text-emerald-400"
+                    title="Copiar mensagem"
+                  >
+                    {copiedId === `${index}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  </button>
+                )}
               </div>
               
-              <div
+              <div 
                 className={`px-4 py-3 rounded-2xl ${
                   msg.role === 'user'
                     ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 border border-indigo-400/20 text-white rounded-tr-sm shadow-lg shadow-indigo-500/10'
@@ -633,7 +684,40 @@ Sempre responda de forma muito simples e didática. Se for Excel, forneça fórm
                       </div>
                     )}
                     <div className="prose prose-sm prose-invert prose-emerald max-w-none break-words leading-relaxed text-[13.5px] md:text-[14.5px]">
-                      <Markdown>{msg.content}</Markdown>
+                      <Markdown
+                        components={{
+                          code({ node, inline, className, children, ...props }: any) {
+                            const match = /language-(\w+):(.+)/.exec(className || '');
+                            const isDownloadable = !inline && match;
+                            
+                            if (isDownloadable) {
+                              const lang = match[1];
+                              const filename = match[2];
+                              return (
+                                <div className="my-4 rounded-lg overflow-hidden border border-white/10 bg-black/30">
+                                  <div className="flex items-center justify-between px-3 py-2 bg-white/5 border-b border-white/10">
+                                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">{filename}</span>
+                                    <button 
+                                      onClick={() => downloadFile(String(children).replace(/\n$/, ''), filename)}
+                                      className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-tight transition-all"
+                                    >
+                                      <Download className="h-3 w-3" /> Salvar Arquivo
+                                    </button>
+                                  </div>
+                                  <pre className="p-4 overflow-x-auto text-[12px]">
+                                    <code className={`language-${lang}`} {...props}>
+                                      {children}
+                                    </code>
+                                  </pre>
+                                </div>
+                              );
+                            }
+                            return <code className={className} {...props}>{children}</code>;
+                          }
+                        }}
+                      >
+                        {msg.content}
+                      </Markdown>
                     </div>
                   </div>
                 )}
