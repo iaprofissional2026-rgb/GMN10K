@@ -5,7 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 import { useFiles } from '@/app/context/FileContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { supabase } from '@/lib/supabase';
-import { Bot, Send, User, Loader2, Database, Menu, Plus, MessageSquare, Trash2, X, Settings2, Key, ExternalLink, Cpu, Copy, Check, Download } from 'lucide-react';
+import { Bot, Send, User, Loader2, Database, Menu, Plus, MessageSquare, Trash2, X, Settings2, Key, ExternalLink, Cpu, Copy, Check, Download, Image as ImageIcon, Sparkles, Paperclip } from 'lucide-react';
 import Markdown from 'react-markdown';
 import Link from 'next/link';
 
@@ -13,6 +13,7 @@ interface Message {
   role: 'user' | 'model';
   content: string;
   image?: string; // Base64 image
+  isImageAction?: boolean;
 }
 
 interface ChatSession {
@@ -25,12 +26,12 @@ interface ChatSession {
 
 const GMN_DEFAULT_MESSAGE: Message = {
   role: 'model',
-  content: 'Olá! Sou seu Assistente GMN. Sou direto e profissional. Analiso seus arquivos e ajudo com SEO Local, prospecção e otimização. Como posso ajudar seu negócio hoje?',
+  content: 'Olá! Sou seu Assistente GMN PRO. Vamos fechar negócios hoje? Analiso seus arquivos, imagens e ajudo com SEO Local e prospecção de alto impacto. Qual empresa vamos dominar hoje?',
 };
 
 const GENERAL_DEFAULT_MESSAGE: Message = {
   role: 'model',
-  content: 'Oi! Eu sou seu assistente para tudo. Posso te ajudar com planilhas, Excel, ideias criativas ou qualquer dúvida que você tiver de um jeito bem fácil de entender. O que vamos fazer agora?',
+  content: 'Oi! Sou seu assistente expert. Precisa de fórmulas complexas, análise de dados ou melhorar uma imagem para ficar em 4K profissional? Estou aqui para ajudar.',
 };
 
 export default function AssistantPage() {
@@ -46,10 +47,12 @@ export default function AssistantPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [tempApiKey, setTempApiKey] = useState('');
   const [tempGeneralApiKey, setTempGeneralApiKey] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isImproving, setIsImproving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const userEmail = 'souturbo149@gmail.com';
-
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, msgId: string) => {
@@ -112,7 +115,6 @@ export default function AssistantPage() {
 
   useEffect(() => {
     const loadSessions = async () => {
-      // Local fallback first
       const savedSessions = localStorage.getItem('gmn_chat_sessions');
       if (savedSessions) {
         try {
@@ -126,7 +128,6 @@ export default function AssistantPage() {
         } catch (e) {}
       }
 
-      // Supabase sync (filtered by user email)
       try {
         const { data, error } = await supabase
           .from('chats')
@@ -145,7 +146,7 @@ export default function AssistantPage() {
           setSessions(mappedSessions);
           setCurrentSessionId(mappedSessions[0].id);
           setMessages(mappedSessions[0].messages);
-          setAssistantType(mappedSessions[mappedSessions.length - 1].type || 'gmn'); // approximate
+          setAssistantType(mappedSessions[mappedSessions.length - 1].type || 'gmn');
           localStorage.setItem('gmn_chat_sessions', JSON.stringify(mappedSessions));
         } else if (!savedSessions) {
           createNewSession();
@@ -192,17 +193,8 @@ export default function AssistantPage() {
 
   const updateCurrentSession = async (newMessages: Message[]) => {
     setMessages(newMessages);
-    
-    let newTitle = undefined;
     const currentSession = sessions.find((s) => s.id === currentSessionId);
-    if (
-      newMessages.length === 3 && 
-      newMessages[1].role === 'user' && 
-      currentSession?.title === 'Nova Conversa'
-    ) {
-      newTitle = newMessages[1].content.substring(0, 30) + (newMessages[1].content.length > 30 ? '...' : '');
-    }
-
+    
     const sessionToUpdate: ChatSession = {
       ...(currentSession || { 
         id: currentSessionId, 
@@ -213,7 +205,7 @@ export default function AssistantPage() {
       }),
       messages: newMessages,
       updatedAt: Date.now(),
-      title: newTitle || currentSession?.title || (assistantType === 'gmn' ? 'Assistente GMN' : 'Assistente Geral'),
+      title: currentSession?.title && currentSession.title !== 'Nova Conversa' ? currentSession.title : (newMessages[1]?.content?.substring(0, 30) || 'Nova Conversa'),
     };
 
     const updatedSessions = sessions.map((s) => {
@@ -238,181 +230,14 @@ export default function AssistantPage() {
     scrollToBottom();
   }, [messages, loading]);
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-
-    const userMsg = input.trim();
-    setInput('');
-    const newMessages: Message[] = [...messages, { role: 'user', content: userMsg }];
-    updateCurrentSession(newMessages);
-    setLoading(true);
-
-    try {
-      const activeApiKey = assistantType === 'gmn' ? apiKey : (generalApiKey || apiKey);
-      if (!activeApiKey) {
-        throw new Error('Chave de API não configurada. Configure sua chave nas configurações.');
-      }
-
-      const client = new GoogleGenAI({ apiKey: activeApiKey });
-
-      // Logic to detect if the user wants an image
-      const imageKeywords = ['crie uma imagem', 'gerar imagem', 'desenhe', 'create image', 'generate image', 'faz uma imagem', 'imagem de'];
-      const wantsImage = imageKeywords.some(keyword => userMsg.toLowerCase().includes(keyword));
-
-      if (wantsImage) {
-        // Use recommended image generation model
-        const fetchImageWithRetry = async (retries: number = 2): Promise<any> => {
-          try {
-            return await client.models.generateContent({
-              model: 'gemini-2.5-flash-image',
-              contents: [{ role: 'user', parts: [{ text: `Aja como um gerador de imagens. Produza uma imagem baseada nesta descrição: ${userMsg}` }] }],
-              config: {
-                imageConfig: {
-                  aspectRatio: "1:1",
-                  imageSize: "1K"
-                }
-              }
-            });
-          } catch (err: any) {
-            const errMsg = err.message || "";
-            if ((errMsg.includes('503') || errMsg.includes('UNAVAILABLE') || errMsg.includes('high demand')) && retries > 0) {
-              await new Promise(resolve => setTimeout(resolve, 3000));
-              return fetchImageWithRetry(retries - 1);
-            }
-            throw err;
-          }
-        };
-
-        const response = await fetchImageWithRetry();
-
-        let imageBase64 = '';
-        let textResult = '';
-
-        if (response.candidates?.[0]?.content?.parts) {
-          for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData?.data) {
-              imageBase64 = part.inlineData.data;
-            } else if (part.text) {
-              textResult += part.text;
-            }
-          }
-        }
-
-        if (imageBase64) {
-          const finalContent = textResult || "Aqui está a imagem que você pediu:";
-          updateCurrentSession([
-            ...newMessages, 
-            { 
-              role: 'model', 
-              content: finalContent,
-              image: `data:image/png;base64,${imageBase64}`
-            }
-          ]);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Standard Text Generation
-      const processedFiles = files.filter((f) => f.status === 'Processado' && f.content);
-      const fileContext = processedFiles
-        .map((f) => `### Arquivo: ${f.name}\n${f.content}`)
-        .join('\n\n');
-
-      const trimmedFileContext = fileContext.substring(0, 30000);
-
-      let systemPromptText = '';
-      let modelToUse = assistantType === 'gmn' ? 'gemini-3-flash-preview' : 'gemini-3.1-pro-preview';
-      
-      if (assistantType === 'gmn') {
-        systemPromptText = `Você é o estrategista chefe e "fechador de negócios" expert em SEO Local e GMN.
-Sua missão única é AJUDAR O USUÁRIO A FECHAR CONTRATOS com empresas locais.
-
-DIRETRIZES DE OURO:
-1. FOCO TOTAL EM FECHAMENTO: Toda resposta deve incluir um argumento de venda forte ou um próximo passo prático para converter o prospect.
-2. DADOS DOS ARQUIVOS SÃO LEI: Use EXCLUSIVAMENTE os dados dos arquivos abaixo para embasar seus argumentos. Se houver templates de mensagens nos arquivos, priorize-os.
-3. CONCISÃO ABSOLUTA: Se o usuário puder ler em 30 segundos, não escreva por 1 minuto.
-4. LINGUAGEM DE IMPACTO: Use termos como "perda de tráfego", "domínio de mercado", "janela de oportunidade" e "autoridade local".
-
-CAPACIDADES ESPECIAIS:
-- Você cria CHECKLISTS de prospecção e otimização cirúrgicos.
-- Você gera PLANILHAS CSV focadas em CRM e controle de prospecção.
-- Você domina gatilhos mentais para prospecção fria.
-
-Ao criar um arquivo para download, use:
-\`\`\`extensao:nome_do_arquivo.ext
-conteudo aqui
-\`\`\`
-
-BASE DE CONHECIMENTO CRÍTICA (USE ESTE CONTEÚDO PRIORITARIAMENTE):
-${trimmedFileContext}`;
-      } else {
-        systemPromptText = `Você é um assistente sênior de produtividade e análise de dados.
-Seu objetivo é resolver problemas complexos (Excel, Planilhas, Organização) de forma ultra simples.
-
-CAPACIDADES:
-- Expert em fórmulas complexas de Excel/Sheets.
-- Gerador de checklists de execução impecável.
-- Criação de arquivos estruturados (.csv, .txt, .md).
-
-Ao criar um arquivo para download, use:
-\`\`\`csv:planilha_vendas.csv
-ID,Cliente,Valor
-1,Empresa X,500
-\`\`\`
-Seja didático e focado em eficiência.`;
-      }
-
-      const chatHistory = newMessages.slice(1).map((msg) => ({
-        role: msg.role,
-        parts: [{ text: msg.content }],
-      }));
-
-      const fetchWithRetry = async (model: string, retries: number = 2): Promise<any> => {
-        try {
-          return await client.models.generateContent({
-            model: model,
-            contents: [
-              { role: 'user', parts: [{ text: systemPromptText }] },
-              { role: 'model', parts: [{ text: 'Entendido. Responderei de acordo com minha personalidade e contexto.' }] },
-              ...chatHistory,
-            ],
-          });
-        } catch (err: any) {
-          const errMsg = err.message || "";
-          const isRetryable = errMsg.includes('503') || 
-                            errMsg.includes('UNAVAILABLE') || 
-                            errMsg.includes('high demand') ||
-                            errMsg.includes('quota');
-          
-          if (isRetryable && retries > 0) {
-            // Exponential backoff: 2s, 4s
-            await new Promise(resolve => setTimeout(resolve, 2000 * (3 - retries)));
-            return fetchWithRetry(model, retries - 1);
-          }
-          
-          // Fallback to flash if pro is unavailable
-          if (model === 'gemini-3.1-pro-preview' && isRetryable) {
-            return fetchWithRetry('gemini-3-flash-preview', 1);
-          }
-          
-          throw err;
-        }
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
       };
-
-      const response = await fetchWithRetry(modelToUse);
-
-      const responseText = response.text || "";
-      updateCurrentSession([...newMessages, { role: 'model', content: responseText }]);
-      addTokensUsed(userMsg.length + responseText.length);
-    } catch (err: any) {
-      console.error(err);
-      updateCurrentSession([
-        ...newMessages,
-        { role: 'model', content: `Ocorreu um erro ao processar sua resposta: ${err.message}` },
-      ]);
-    } finally {
-      setLoading(false);
+      reader.readAsDataURL(file);
     }
   };
 
@@ -423,368 +248,168 @@ Seja didático e focado em eficiência.`;
     }
   };
 
-  const activeFilesCount = files.length;
+  const handleSend = async () => {
+    if ((!input.trim() && !selectedImage) || loading) return;
+
+    const userMsg = input.trim();
+    const currentImage = selectedImage;
+    setInput('');
+    setSelectedImage(null);
+    
+    const newMessages: Message[] = [...messages, { 
+      role: 'user', 
+      content: userMsg || (currentImage ? 'Analise esta imagem' : ''), 
+      image: currentImage || undefined 
+    }];
+    updateCurrentSession(newMessages);
+    setLoading(true);
+
+    try {
+      const activeApiKey = assistantType === 'gmn' ? apiKey : (generalApiKey || apiKey);
+      if (!activeApiKey) throw new Error('Chave de API não configurada.');
+
+      const client = new GoogleGenAI({ apiKey: activeApiKey });
+
+      // Image Improvement Logic
+      const improveKeywords = ['melhorar imagem', 'profissional', '4k', 'melhoria', 'enhance'];
+      const wantsImprovement = improveKeywords.some(keyword => userMsg.toLowerCase().includes(keyword)) && currentImage;
+
+      if (wantsImprovement) {
+        const response = await client.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: {
+            parts: [
+              { inlineData: { data: currentImage.split(',')[1], mimeType: "image/png" } },
+              { text: `Redesenhe esta imagem como uma fotografia profissional 4K, iluminação ultra realística, nitidez extrema. ${userMsg}` },
+            ],
+          },
+          config: { imageConfig: { aspectRatio: "1:1", imageSize: "1K" } }
+        });
+        
+        let improvedBase64 = '';
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData?.data) { improvedBase64 = part.inlineData.data; break; }
+        }
+
+        if (improvedBase64) {
+          updateCurrentSession([...newMessages, { role: 'model', content: "Elevei sua imagem ao nível profissional 4K.", image: `data:image/png;base64,${improvedBase64}`, isImageAction: true }]);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Standard Multimodal Generation
+      let modelToUse = assistantType === 'gmn' ? 'gemini-3-flash-preview' : 'gemini-3.1-pro-preview';
+      
+      const chatHistory = newMessages.slice(1).map((msg) => {
+        const parts: any[] = [{ text: msg.content }];
+        if (msg.image) parts.push({ inlineData: { data: msg.image.split(',')[1], mimeType: "image/png" } });
+        return { role: msg.role, parts };
+      });
+
+      const response = await client.models.generateContent({
+        model: modelToUse,
+        contents: [
+          { role: 'user', parts: [{ text: `Aja como um assistente expert. Se houver imagens, analise-as detalhadamente.` }] },
+          ...chatHistory
+        ],
+      });
+
+      updateCurrentSession([...newMessages, { role: 'model', content: response.text || "" }]);
+    } catch (err: any) {
+      updateCurrentSession([...newMessages, { role: 'model', content: `Erro: ${err.message}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 pb-[72px] md:relative md:pb-0 flex md:h-full overflow-hidden bg-[#0A0F14] z-20">
-      {/* History Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-40 w-72 bg-slate-900/90 backdrop-blur-xl border-r border-emerald-500/10 shadow-[0_0_40px_rgba(16,185,129,0.1)] transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    <div className="fixed inset-0 pb-[72px] md:relative md:pb-0 flex md:h-full overflow-hidden bg-slate-950 z-20">
+      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="absolute top-[-20%] left-[-10%] w-[100%] h-[60%] bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.15),transparent_70%)] animate-pulse-slow"></div>
+        <div className="absolute bottom-[-20%] right-[-10%] w-[100%] h-[60%] bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.15),transparent_70%)] animate-pulse-slow"></div>
+      </div>
+
+      <div className={`fixed inset-y-0 left-0 z-40 w-72 bg-slate-900/90 backdrop-blur-xl border-r border-emerald-500/10 transform transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
           <div className="p-4 border-b border-white/5 flex items-center justify-between">
-            <h2 className="font-heading font-semibold text-slate-100 flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-emerald-400" /> Histórico
+            <h2 className="font-heading font-semibold text-slate-100 flex items-center gap-2 italic">
+              <MessageSquare className="h-4 w-4 text-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" /> HISTÓRICO
             </h2>
-            <button className="md:hidden p-1 text-slate-400 hover:text-emerald-400 transition-colors" onClick={() => setIsSidebarOpen(false)}>
-              <X className="h-5 w-5" />
-            </button>
           </div>
-          
           <div className="p-4 space-y-3">
-            <button 
-              onClick={() => createNewSession('gmn')}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg text-white font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] border border-emerald-400/20 active:scale-95"
-            >
-              <Plus className="h-4 w-4" /> Novo GMN
-            </button>
-            <button 
-              onClick={() => createNewSession('general')}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 rounded-lg text-white font-bold text-xs uppercase tracking-wider transition-all border border-white/5 shadow-lg active:scale-95"
-            >
-              <Cpu className="h-4 w-4 text-indigo-400" /> Geral (Excel)
-            </button>
+            <button onClick={() => createNewSession('gmn')} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white font-bold text-xs uppercase shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all">NOVO GMN</button>
+            <button onClick={() => createNewSession('general')} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-white font-bold text-xs uppercase transition-all">GERAL EXPERT</button>
           </div>
-
-          <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2 relative z-10 custom-scrollbar mt-2">
-            {sessions.map((session) => (
-              <div 
-                key={session.id} 
-                onClick={() => loadSession(session.id)}
-                className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                  currentSessionId === session.id ? 'bg-emerald-500/10 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'hover:bg-white/5 border border-transparent'
-                }`}
-              >
-                <div className="overflow-hidden">
-                  <p className={`text-sm font-medium truncate transition-colors ${currentSessionId === session.id ? 'text-emerald-400' : 'text-slate-300 group-hover:text-emerald-100'}`}>
-                    {session.title}
-                  </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    {new Date(session.updatedAt).toLocaleDateString()} {new Date(session.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-                <button 
-                  onClick={(e) => deleteSession(session.id, e)}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+          <div className="flex-1 overflow-y-auto px-4 space-y-2 custom-scrollbar">
+            {sessions.map(s => (
+              <div key={s.id} onClick={() => loadSession(s.id)} className={`p-3 rounded-lg cursor-pointer transition-all border ${currentSessionId === s.id ? 'bg-emerald-500/10 border-emerald-500/30' : 'border-transparent hover:bg-white/5'}`}>
+                <p className="text-sm font-medium truncate text-slate-300">{s.title}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-white/5 bg-[#0D1219]/90 backdrop-blur-md flex-shrink-0 relative z-20 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
+      <div className="flex-1 flex flex-col h-full min-w-0 relative">
+        <div className="flex items-center justify-between px-4 py-4 border-b border-white/5 bg-[#0D1219]/90 backdrop-blur-md relative z-20 shadow-2xl">
           <div className="flex items-center gap-3">
-            <button 
-              className="md:hidden p-1.5 bg-slate-800/80 border border-white/10 rounded-md text-slate-300 hover:bg-slate-700 hover:text-emerald-400 transition"
-              onClick={() => setIsSidebarOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="bg-gradient-to-br from-emerald-500/20 to-teal-500/10 p-2.5 rounded-xl border border-emerald-500/30 hidden md:flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.15)] overflow-hidden relative">
-              <div className="absolute inset-0 bg-emerald-400/5 animate-pulse"></div>
-              <Bot className="h-5 w-5 text-emerald-400 relative z-10" />
-            </div>
-            <div>
-              <h1 className="font-heading font-bold text-slate-100 leading-tight text-lg tracking-tight">
-                Assistente <span className={assistantType === 'gmn' ? 'text-emerald-400' : 'text-indigo-400'}>
-                  {assistantType === 'gmn' ? 'PRO Estratégico' : 'Geral Expert'}
-                </span>
-              </h1>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">
-                  {assistantType === 'gmn' ? 'Analista de Conversão' : 'Automação & Dados'}
-                </p>
-              </div>
-            </div>
+            <button className="md:hidden p-2 text-slate-300" onClick={() => setIsSidebarOpen(true)}><Menu /></button>
+            <Bot className="h-6 w-6 text-emerald-400" />
+            <h1 className="font-bold text-lg">ASSISTENTE <span className="text-emerald-400">PRO</span></h1>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-emerald-500/5 border border-emerald-500/20 rounded-full">
-              <Database className="h-3 w-3 text-emerald-400" />
-              <span className="text-[10px] font-bold text-emerald-300/80 uppercase tracking-tighter">Contexto: {activeFilesCount} arquivos</span>
-            </div>
-            <button
-              onClick={() => {
-                setTempApiKey(apiKey);
-                setTempGeneralApiKey(generalApiKey);
-                setIsSettingsOpen(true);
-              }}
-              className="flex items-center justify-center p-2.5 rounded-xl bg-slate-800/40 hover:bg-slate-800/80 border border-white/5 hover:border-emerald-500/40 transition-all text-slate-400 hover:text-emerald-400"
-              title="Configurações da API"
-            >
-              <Settings2 className="h-5 w-5" />
-            </button>
-            <Link 
-              href="/knowledge" 
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-95"
-            >
-              <Database className="h-4 w-4" />
-              <span className="text-xs font-bold hidden sm:inline uppercase tracking-wider">
-                Base
-              </span>
-            </Link>
-          </div>
+          <Settings2 className="h-5 w-5 text-slate-400 cursor-pointer" onClick={() => setIsSettingsOpen(true)} />
         </div>
 
-        {/* Settings Modal */}
-        {isSettingsOpen && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-[#0f1722] border border-emerald-500/30 rounded-xl w-full max-w-md shadow-[0_0_50px_rgba(16,185,129,0.15)] overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-              <div className="flex justify-between items-center p-4 border-b border-emerald-500/10 bg-emerald-500/5">
-                <h3 className="font-heading font-semibold text-emerald-50 flex items-center gap-2">
-                  <Key className="h-4 w-4 text-emerald-400" /> Configuração da API Gemini
-                </h3>
-                <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-emerald-400 p-1 transition-colors">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="p-5 space-y-5">
-                <div>
-                  <label className="block text-sm font-medium text-emerald-100/70 mb-1">
-                    Chave API GMN (Essencial)
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="AIzaSy..."
-                    value={tempApiKey}
-                    onChange={(e) => setTempApiKey(e.target.value)}
-                    className="w-full rounded-lg bg-black/50 border border-emerald-500/20 px-3 py-2 text-emerald-50 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all font-mono text-sm shadow-inner"
-                  />
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar relative z-10">
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex flex-col max-w-3xl ${msg.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'}`}>
+              <div className={`px-4 py-3 rounded-2xl ${msg.role === 'user' ? 'bg-slate-800' : 'bg-slate-900 border border-emerald-500/20 shadow-glow'} relative group/msg overflow-hidden`}>
+                {msg.image && <img src={msg.image} className="rounded-lg mb-2 max-w-sm" />}
+                <div className="prose prose-invert prose-sm text-slate-200">
+                  <Markdown>{msg.content}</Markdown>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-indigo-200/70 mb-1">
-                    Chave API Geral (Avatar Roxo/Excel)
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="AIzaSy..."
-                    value={tempGeneralApiKey}
-                    onChange={(e) => setTempGeneralApiKey(e.target.value)}
-                    className="w-full rounded-lg bg-black/50 border border-indigo-500/20 px-3 py-2 text-indigo-50 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono text-sm shadow-inner"
-                  />
-                  <p className="text-xs text-slate-500 mt-2">
-                    Cada assistente pode ter sua própria chave para evitar limites de uso compartilhado.
-                  </p>
-                </div>
-
-                <div className="bg-black/40 p-4 rounded-lg border border-emerald-500/10">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-400 flex items-center gap-1.5">
-                      <Cpu className="h-4 w-4 text-teal-500" /> Uso da API
-                    </span>
-                    <span className="text-sm font-bold text-emerald-400">
-                      {apiTokensUsed.toLocaleString()} tokens
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-500">
-                    O consumo total de tokens computado localmente no seu navegador.
-                  </p>
-                </div>
-
-                <div>
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm text-teal-400 hover:text-emerald-300 transition-colors w-fit group"
-                  >
-                    <ExternalLink className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                    Obter nova chave API Gemini
-                  </a>
-                </div>
-              </div>
-              <div className="p-4 border-t border-emerald-500/10 flex justify-end gap-3 bg-emerald-500/5">
-                <button 
-                  onClick={() => setIsSettingsOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-emerald-200/60 hover:text-emerald-100 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  onClick={() => {
-                    setApiKey(tempApiKey);
-                    setGeneralApiKey(tempGeneralApiKey);
-                    setIsSettingsOpen(false);
-                  }}
-                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-sm font-bold tracking-wide transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)]"
-                >
-                  Salvar Configurações
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Chat Messages */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth custom-scrollbar relative z-10 w-full mb-2">
-          {messages.map((msg, index) => (
-            <div
-              key={index}
-              className={`flex flex-col max-w-3xl ${
-                msg.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'
-              }`}
-            >
-              <div className={`flex items-center gap-2 mb-1.5 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                <div className={`flex items-center justify-center h-6 w-6 rounded-full shrink-0 ${
-                  msg.role === 'user' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
-                }`}>
-                  {msg.role === 'user' ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-                </div>
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 select-none">
-                  {msg.role === 'user' ? 'Você' : (assistantType === 'gmn' ? 'GMN Assist' : 'Geral Assist')}
-                </span>
-                {msg.role === 'model' && (
+                
+                {/* Message Actions */}
+                <div className={`absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200 ${msg.role === 'user' ? 'hidden' : ''}`}>
                   <button 
-                    onClick={() => copyToClipboard(msg.content, `${index}`)}
-                    className="p-1 hover:bg-slate-800 rounded transition-colors text-slate-500 hover:text-emerald-400"
+                    onClick={() => copyToClipboard(msg.content, `msg-${i}`)}
+                    className="p-1.5 bg-black/40 hover:bg-emerald-500/20 rounded-md transition-colors text-slate-400 hover:text-emerald-400"
                     title="Copiar mensagem"
                   >
-                    {copiedId === `${index}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    {copiedId === `msg-${i}` ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                   </button>
-                )}
-              </div>
-              
-              <div 
-                className={`px-4 py-3 rounded-2xl ${
-                  msg.role === 'user'
-                    ? 'bg-[#1E293B] border border-white/5 text-slate-100 rounded-tr-sm shadow-xl'
-                    : assistantType === 'gmn' 
-                      ? 'bg-[#0F172A] border border-emerald-500/10 text-slate-200 rounded-tl-sm shadow-2xl relative overflow-hidden group/msg'
-                      : 'bg-[#0F172A] border border-indigo-500/10 text-slate-200 rounded-tl-sm shadow-2xl relative overflow-hidden group/msg'
-                } max-w-full`}
-              >
-                {msg.role === 'model' && (
-                  <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${assistantType === 'gmn' ? 'from-emerald-500/5' : 'from-indigo-500/5'} to-transparent pointer-events-none opacity-0 group-hover/msg:opacity-100 transition-opacity duration-500`}></div>
-                )}
-                {msg.role === 'user' ? (
-                  <div className="whitespace-pre-wrap text-[13.5px] md:text-[14.5px] leading-relaxed break-words font-medium text-slate-200">
-                    {msg.content}
-                  </div>
-                ) : (
-                  <div className="space-y-4 relative z-10">
-                    {msg.image && (
-                      <div className="relative group/img overflow-hidden rounded-xl border border-white/10 shadow-2xl">
-                        <img 
-                          src={msg.image} 
-                          alt="Generated AI" 
-                          className="w-full max-w-sm cursor-pointer hover:scale-[1.03] transition-transform duration-500" 
-                          onClick={() => window.open(msg.image, '_blank')}
-                        />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-all duration-300 pointer-events-none">
-                          <ExternalLink className="h-6 w-6 text-white scale-75 group-hover/img:scale-100 transition-transform" />
-                        </div>
-                      </div>
-                    )}
-                    <div className="prose prose-sm prose-invert prose-emerald max-w-none break-words leading-relaxed text-[13.5px] md:text-[14.5px] font-medium text-slate-300">
-                      <Markdown
-                        components={{
-                          code({ node, inline, className, children, ...props }: any) {
-                            const match = /language-(\w+):(.+)/.exec(className || '');
-                            const isDownloadable = !inline && match;
-                            
-                            if (isDownloadable) {
-                              const lang = match[1];
-                              const filename = match[2];
-                              return (
-                                <div className="my-5 rounded-xl overflow-hidden border border-white/5 bg-black/40 shadow-2xl">
-                                  <div className="flex items-center justify-between px-4 py-2.5 bg-white/5 border-b border-white/5">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-                                      <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">{filename}</span>
-                                    </div>
-                                    <button 
-                                      onClick={() => downloadFile(String(children).replace(/\n$/, ''), filename)}
-                                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-tight transition-all border border-emerald-500/20 hover:border-emerald-500/40"
-                                    >
-                                      <Download className="h-3.5 w-3.5" /> Baixar
-                                    </button>
-                                  </div>
-                                  <pre className="p-5 overflow-x-auto text-[12px] bg-black/20">
-                                    <code className={`language-${lang}`} {...props}>
-                                      {children}
-                                    </code>
-                                  </pre>
-                                </div>
-                              );
-                            }
-                            return <code className={className} {...props}>{children}</code>;
-                          }
-                        }}
-                      >
-                        {msg.content}
-                      </Markdown>
-                    </div>
-                  </div>
-                )}
+                  {msg.content.includes('```') && (
+                    <button 
+                      onClick={() => {
+                        const match = msg.content.match(/```([\s\S]*?):([\s\S]*?)\n([\s\S]*?)```/);
+                        if (match) downloadFile(match[3], match[2]);
+                      }}
+                      className="p-1.5 bg-black/40 hover:bg-emerald-500/20 rounded-md transition-colors text-slate-400 hover:text-emerald-400"
+                      title="Baixar arquivo"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
-          {loading && (
-            <div className="flex flex-col max-w-3xl mr-auto items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="flex items-center gap-2 mb-1.5">
-                <div className="flex items-center justify-center h-6 w-6 rounded-full shrink-0 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
-                  <Bot className="h-3.5 w-3.5" />
-                </div>
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 select-none">GMN Assist</span>
-              </div>
-              <div className="bg-[#111A22]/90 border border-emerald-500/20 px-6 py-4 rounded-2xl rounded-tl-sm flex items-center justify-center min-w-[80px] shadow-[0_4px_20px_rgba(0,0,0,0.2)]">
-                <div className="flex gap-1.5">
-                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="h-2 w-2 rounded-full bg-emerald-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} className="h-2" />
+          {loading && <Loader2 className="h-6 w-6 animate-spin text-emerald-400 mx-auto" />}
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
-        <div className="p-3 md:p-5 bg-gradient-to-t from-[#0A0F14] to-[#0A0F14]/80 backdrop-blur-xl border-t border-emerald-500/10 shrink-0 relative z-20">
-          <div className="max-w-4xl mx-auto flex items-center p-1.5 md:p-2 rounded-xl bg-black/40 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.05)] focus-within:border-emerald-500/60 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:shadow-[0_0_30px_rgba(16,185,129,0.15)] transition-all duration-300 w-full group">
-            <input
-              type="text"
-              placeholder="Digite o perfil do cliente ou sua estratégia..."
-              className="flex-1 bg-transparent border-none px-3 md:px-4 py-2 md:py-2.5 text-sm md:text-[15px] font-medium text-emerald-50 placeholder:text-slate-500 focus:outline-none focus:ring-0 w-full"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={loading}
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || loading}
-              className="flex shrink-0 items-center justify-center h-10 w-10 md:h-11 md:w-11 md:ml-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white transition-all hover:from-emerald-400 hover:to-teal-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:opacity-50 disabled:shadow-none shadow-[0_0_15px_rgba(16,185,129,0.4)] group-focus-within:shadow-[0_0_20px_rgba(16,185,129,0.6)]"
-            >
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5 ml-0.5" />}
-            </button>
-          </div>
-          <div className="text-center mt-2.5 hidden md:block">
-            <span className="text-[10px] text-emerald-500/50 uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
-              <span>IA Orientada a Conversão</span> &middot; <span>Cruza Dados dos Arquivos Base</span>
-            </span>
+        <div className="p-4 bg-slate-950/80 backdrop-blur-xl border-t border-white/5 relative z-20">
+          <div className="max-w-4xl mx-auto space-y-2">
+            {selectedImage && (
+              <div className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-emerald-500"><img src={selectedImage} className="w-full h-full object-cover" /><X className="absolute top-1 right-1 h-4 w-4 bg-black rounded-full cursor-pointer" onClick={() => setSelectedImage(null)} /></div>
+            )}
+            <div className="flex items-center gap-2 p-2 bg-slate-900/60 rounded-2xl border border-white/10 focus-within:border-emerald-500/50 shadow-2xl">
+              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
+              <Paperclip className="h-5 w-5 text-slate-400 cursor-pointer hover:text-emerald-400 ml-2" onClick={() => fileInputRef.current?.click()} />
+              <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Envie uma imagem ou mensagem..." className="flex-1 bg-transparent border-none text-slate-100 placeholder:text-slate-500 focus:outline-none" />
+              <button onClick={handleSend} className="p-2 bg-emerald-600 rounded-xl text-white hover:scale-105 transition-all"><Send className="h-5 w-5" /></button>
+            </div>
           </div>
         </div>
       </div>

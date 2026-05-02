@@ -1,45 +1,27 @@
-import type { Metadata, Viewport } from 'next';
-import { Inter, Space_Grotesk } from 'next/font/google';
-import './globals.css';
-import { Sidebar } from '@/components/Sidebar';
-import { MobileNav } from '@/components/MobileNav';
-import { FloatingMedia } from '@/components/FloatingMedia';
-import { FileProvider } from '@/app/context/FileContext';
-import { SettingsProvider } from '@/app/context/SettingsContext';
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { FileProvider } from "./context/FileContext";
+import { SettingsProvider } from "./context/SettingsContext";
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
-const space = Space_Grotesk({ subsets: ['latin'], variable: '--font-heading' });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Assistente GMN',
-  description: 'Prospecção e Gestão Local',
+  title: "GMN PRO Assistant",
+  description: "Estrategista Chefe de SEO Local e GMN",
 };
 
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html lang="pt-BR" className={`${inter.variable} ${space.variable}`}>
-      <body className="flex h-screen supports-[height:100dvh]:h-[100dvh] bg-slate-950 font-sans text-slate-100 antialiased relative overflow-x-hidden" suppressHydrationWarning>
-        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-[-10%] left-[-10%] w-[80%] h-[40%] md:w-[40%] bg-indigo-600/30 rounded-full blur-[120px]"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[80%] h-[40%] md:w-[40%] bg-teal-600/30 rounded-full blur-[120px]"></div>
-        </div>
+    <html lang="pt-br" className="dark">
+      <body className={`${inter.className} bg-slate-950 text-slate-100 antialiased`}>
         <SettingsProvider>
           <FileProvider>
-            <div className="relative z-10 flex h-full w-full flex-col md:flex-row overflow-x-hidden">
-              <Sidebar />
-              <main className="relative flex-1 overflow-y-auto overflow-x-hidden pb-16 md:pb-0">
-                {children}
-              </main>
-              <FloatingMedia />
-              <MobileNav />
-            </div>
+            {children}
           </FileProvider>
         </SettingsProvider>
       </body>
